@@ -15,6 +15,7 @@ from logoscan.settings import BASE_DIR, STATIC_ROOT
 from pymongo import MongoClient
 import gridfs
 import pprint
+import numpy as np
 
 
 def index(request):
@@ -44,23 +45,30 @@ class LogoUploadView(APIView):
 
     for l in database.fs.files.find():
       filename = l['name']
-      filepath = os.path.join(BASE_DIR, f'media/test_folder/{filename}')
+      # filepath = os.path.join(BASE_DIR, f'media/test_folder/{filename}')
       file = fs.get(l['_id']).read()
-      location = open(filepath, 'wb')
-      location.write(file)
-      location.close()
-      image = cv2.imread(filepath)
+      # try to use the direct image variable stored in mongo db
+      nparr = np.frombuffer(file, np.uint8)
+      # location = open(filepath, 'wb')
+      # location.write(file)
+      # location.close()
+      image = cv2.imdecode(nparr,cv2.IMREAD_UNCHANGED)
       features = cd.describe(image)
       features = [str(f) for f in features]
       output1.write("%s,%s\n" % (filename, ",".join(features)))
     output1.close()
-    filepath = os.path.join(BASE_DIR, f'media/uploaded_logos/{logo.name}')
+
+    # get the 1440 variable of the user input image
+
+    # filepath = os.path.join(BASE_DIR, f'media/uploaded_logos/{logo.name}')
     uploaded_logo = fs.put(logo, name=logo.name)
     uploaded_logo_data = fs.get(uploaded_logo).read()
-    location = open(filepath, 'wb')
-    location.write(uploaded_logo_data)
-    location.close()
-    image = cv2.imread(filepath)
+    # location = open(filepath, 'wb')
+    # location.write(uploaded_logo_data)
+    # location.close()
+    # image = cv2.imread(filepath)
+    nparr = np.frombuffer(uploaded_logo_data, np.uint8)
+    image = cv2.imdecode(nparr,cv2.IMREAD_UNCHANGED)
     features = cd.describe(image)
     searcher = Searcher("index1.csv")
     results = searcher.search(features)
