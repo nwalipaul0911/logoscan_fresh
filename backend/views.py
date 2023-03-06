@@ -5,8 +5,9 @@ from .image_comparison.main import Searcher, ColorDescriptor
 from ctypes import sizeof
 import cv2
 from django.shortcuts import render
-from django.http import JsonResponse
+from django.http import HttpResponse, JsonResponse
 from rest_framework.views import APIView
+from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework import status
 from .serializers import LogoSerializer
@@ -84,3 +85,17 @@ class LogoUploadView(APIView):
     # return JsonResponse({"message":"working"})
     
 
+# fetch the image stored in mongodb
+class ImageAPIView(APIView):
+    def get(self, request):
+        # Connect to MongoDB
+        fs = gridfs.GridFS(database)
+        # Retrieve the image data from MongoDB
+        
+        data = database.fs.files.find_one({'name': 'health.png'})
+        my_id = data['_id']
+        image_data = fs.get(my_id).read()
+
+        # Serialize the image data to return it as a response
+        # return Response({'image_data': image_data})
+        return HttpResponse(image_data, content_type="image/png")
