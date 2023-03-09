@@ -40,7 +40,7 @@ class LogoUploadView(APIView):
     logo = data['image']
     # initialize gridFs to store logo in database 
     fs = gridfs.GridFS(database)
-    logoId = fs.put(logo, name=logo.name)
+    logoId = fs.put(logo, name=logo.name, flag='uploaded')
     # process numpy array with logodata stored in database
     nparr = np.frombuffer(fs.get(logoId).read(), np.uint8)
     # decode numpy array and descibe image for comparison
@@ -55,12 +55,16 @@ class LogoUploadView(APIView):
     searcher = Searcher(index_list)
     results = searcher.search(features)
     features = [str(f) for f in features]
+    
     # query to check if the uploaded logo index is already in the database
     # if not in database store the index 
+    # if already in database delete the uploaded logo 
     
     check_index = index_database.find_one({'features': features}, {'features': 1})
     if check_index is None:
         index_database.insert_one({'file_id':logoId, 'features':features})
+    else:
+       fs.delete(logoId)
     limit = 3
     # create an array of matching logo urls to be called in a get api to display logos in frontend.
     api_result = []
