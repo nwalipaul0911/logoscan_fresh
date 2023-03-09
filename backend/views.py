@@ -22,8 +22,9 @@ def index(request):
     return JsonResponse({"message": "This is the backend api."})
 
 database= MongoClient('mongodb://localhost:27017').logoscan
-index_database= MongoClient('mongodb://localhost:27017').index
+index_database= MongoClient('mongodb://localhost:27017').logoscan.fs.index
 
+    
 class LogoUploadView(APIView):
   parser_classes = (MultiPartParser, FormParser)
 
@@ -35,71 +36,47 @@ class LogoUploadView(APIView):
     cd = ColorDescriptor((8, 12, 3))
     logo = data['image']
     fs = gridfs.GridFS(database)
-
-
-    uploaded_logo = fs.put(logo, name=logo.name)
-    print(uploaded_logo)
-    uploaded_logo_data = fs.get(uploaded_logo).read()
-    nparr = np.frombuffer(uploaded_logo_data, np.uint8)
+    logoId = fs.put(logo, name=logo.name)
+    nparr = np.frombuffer(fs.get(logoId).read(), np.uint8)
     image = cv2.imdecode(nparr, cv2.IMREAD_UNCHANGED)
     features = cd.describe(image)
-    searcher = Searcher("index.csv")
+    logo_index = index_database.find({}, {'csv_index': 1})
+    index_list = []
+    for csv_index in logo_index:
+       index_list.append(csv_index['csv_index'])
+    searcher = Searcher(index_list)
     results = searcher.search(features)
     features = [str(f) for f in features]
-    output1 = open('index.csv', "a")
-    output1.write("%s,%s\n" % (logo.name, ",".join(features)))
-    output1.close()   
-    limit = 3
-    results = results[:limit]
-    result = dict(results)
-
-    return JsonResponse({'results': results}, status=status.HTTP_201_CREATED)
-
-    
-class LogoUploadView2(APIView):
-  parser_classes = (MultiPartParser, FormParser)
-
-  #renderer_classes= [TemplateHTMLRenderer]
-  #template_name = 'upload_logo.html'
-
-  def post(self, request, *args, **kwargs):
-    data = request.data
-    cd = ColorDescriptor((8, 12, 3))
-    logo = data['image']
-    fs = gridfs.GridFS(database)
-    nparr = np.frombuffer(logo.read(), np.uint8)
-    image = cv2.imdecode(nparr, cv2.IMREAD_UNCHANGED)
-    features = cd.describe(image)
-    searcher = Searcher('index.csv')
-    results = searcher.search(features)
-    features = [str(f) for f in features]
-    index = "%s,%s\n" % (logo.name, ",".join(features))
-    logoId = fs.put(logo, name=logo.name, csv_index=index)
-    print(fs.get(logoId).read())
-    index1 = open('index.csv', 'a')
-    index1.write(index)
-    index1.close()
+    features.insert(0, logo.name)
+    index_database.insert_one({'file_id': logoId, 'csv_index': features})
     limit = 3
     api_result = []
+    results = results[:limit]
     for result in results:
+      url = 'http://127.0.0.1:8000/api/image/'
       logo = database.fs.files.find_one({'name':result[1]})
-      arr = (logo['name'], str(logo['_id']))
+      arr =  url+str(logo['_id'])
       api_result.append(arr)
-    api_results = dict(api_result)
-    return JsonResponse(api_results, status=status.HTTP_201_CREATED)
+    return JsonResponse({'results': api_result}, status=status.HTTP_201_CREATED)
 
 
 class ImageAPIView(APIView):
-    def get(self, request, id, extension):
+    def get(self, request, id):
         # Connect to MongoDB
         fs = gridfs.GridFS(database)
         # Retrieve the image data from MongoDB
 
-        data = database.fs.files.find_one({'_id': ObjectId(id)})
-        my_id = data['_id']
-        image_data = fs.get(my_id).read()
+        image_data = fs.get(ObjectId(id)).read()
+        fileName = database.fs.files.find_one(
+            {
+                "_id": ObjectId(id)
+            }
+        )["name"]
+        # get extension
+        fileExtension = fileName.split(".")[-1]
+        
 
         # Serialize the image data to return it as a response
         # return Response({'image_data': image_data})
-        return HttpResponse(image_data, content_type=f'image/{extension}')
+        return HttpResponse(image_data, content_type=f'image/{fileExtension}')
 

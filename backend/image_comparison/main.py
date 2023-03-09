@@ -105,11 +105,12 @@ class Searcher:
 		results = {}
 		#print("this is searcher function")
 				# open the index file for reading
-		with open(self.indexPath) as f:
+		f = self.indexPath
+		if f:
+			
 			# initialize the CSV reader
-			reader = csv.reader(f)
 			# loop over the rows in the index
-			for row in reader:
+			for row in f:
 				# parse out the image ID and features, then compute the
 				# chi-squared distance between the features in our index
 				# and our query features
@@ -122,7 +123,7 @@ class Searcher:
 				# how 'similar' the image in the index is to our query
 				results[row[0]] = d
 			# close the reader
-			f.close()
+			# f.close()
 		# sort our results, so that the smaller distances (i.e. the
 		# more relevant images are at the front of the list)
 		results = sorted([(v, k) for (k, v) in results.items()])
