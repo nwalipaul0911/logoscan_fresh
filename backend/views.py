@@ -24,7 +24,9 @@ def index(request):
     return JsonResponse({"message": "This is the backend api."})
 
 
-database = MongoClient('mongodb://localhost:27017').logoscan
+# initialize connection with mogoDb 
+database= MongoClient('mongodb://localhost:27017').logoscan
+index_database= MongoClient('mongodb://localhost:27017').logoscan.index
 
 
 class LogoUploadView(APIView):
@@ -37,89 +39,48 @@ class LogoUploadView(APIView):
     # serializer = LogoSerializer(data=request.data)
     # return Response({'serializer': serializer})
 
-    def post(self, request, *args, **kwargs):
-        data = request.data
-        cd = ColorDescriptor((8, 12, 3))
-        logo = data['image']
-        fs = gridfs.GridFS(database)
-
-        # get all the files in the database and save in csv file.
-
-        # for l in database.fs.files.find():
-        #     filename = l['name']
-        #     # filepath = os.path.join(BASE_DIR, f'media/test_folder/{filename}')
-        #     file = fs.get(l['_id']).read()
-        #     # try to use the direct image variable stored in mongo db
-        #     nparr = np.frombuffer(file, np.uint8)
-        #     # location = open(filepath, 'wb')
-        #     # location.write(file)
-        #     # location.close()
-        #     image = cv2.imdecode(nparr, cv2.IMREAD_UNCHANGED)
-        #     features = cd.describe(image)
-        #     features = [float(x) for x in features]
-        #     database.index.insert_one(
-        #         {
-        #             "_id": l["_id"],
-        #             "features": features
-        #         }
-        #     )
-
-        # get the 1440 variable of the user input image
-
-        # filepath = os.path.join(BASE_DIR, f'media/uploaded_logos/{logo.name}')
-        uploaded_logo = fs.put(logo, name=logo.name)
-        uploaded_logo_data = fs.get(uploaded_logo).read()
-        # location = open(filepath, 'wb')
-        # location.write(uploaded_logo_data)
-        # location.close()
-        # image = cv2.imread(filepath)
-        nparr = np.frombuffer(uploaded_logo_data, np.uint8)
-        image = cv2.imdecode(nparr, cv2.IMREAD_UNCHANGED)
-        features = cd.describe(image)
-        features = [float(x) for x in features]
-        searcher = Searcher()
-        results = searcher.search(
-            queryFeatures=features, imagesData=database.index.find())
-        limit = 3
-        images = []
-        for i in results[:limit]:
-            images.append("http://127.0.0.1:8000/api/image/"+i[0])
-
-        
-        database.index.insert_one(
-            {
-                "_id": uploaded_logo,
-                "features": features
-            }
-        )
-        # print("____\n")
-        # print(results)
-        # print("____\n")
-        
-
-        return JsonResponse({'results': images}, status=status.HTTP_201_CREATED)
-
-        # features = cd.describe(image)
-        # features = [str(f) for f in features]
-        # output1.write("%s,%s\n" % (l._id, ",".join(features)))
-        # return JsonResponse({"message":"working"})
-
-
-# fetch the image stored in mongodb
-# class ImageAPIView(APIView):
-#     def get(self, request):
-#         # Connect to MongoDB
-#         fs = gridfs.GridFS(database)
-#         # Retrieve the image data from MongoDB
-
-#         data = database.fs.files.find_one({'name': 'health.png'})
-#         my_id = data['_id']
-#         image_data = fs.get(my_id).read()
-#         print(image_data)
-
-#         # Serialize the image data to return it as a response
-#         # return Response({'image_data': image_data})
-#         return HttpResponse(image_data, content_type="image/png")
+  def post(self, request, *args, **kwargs):
+    cd = ColorDescriptor((8, 12, 3))
+    # Get logo data from the api post request 
+    data = request.data
+    logo = data['image']
+    # initialize gridFs to store logo in database 
+    fs = gridfs.GridFS(database)
+    logoId = fs.put(logo, name=logo.name, flag='uploaded')
+    # process numpy array with logodata stored in database
+    nparr = np.frombuffer(fs.get(logoId).read(), np.uint8)
+    # decode numpy array and descibe image for comparison
+    image = cv2.imdecode(nparr, cv2.IMREAD_UNCHANGED)
+    features = cd.describe(image)
+    # query for logo indexes from the database then store in an array to search for matching logos
+    logo_index = index_database.find({}, {'features': 1, 'file_id': 1})
+    index_list = []
+    for csv_index in logo_index:
+       csv_index['features'].insert(0, csv_index['file_id'])
+       index_list.append(csv_index['features'])
+    searcher = Searcher(index_list)
+    results = searcher.search(features)
+    features = [str(f) for f in features]
+    
+    # query to check if the uploaded logo index is already in the database
+    # if not in database store the index 
+    # if already in database delete the uploaded logo 
+    
+    check_index = index_database.find_one({'features': features}, {'features': 1})
+    if check_index is None:
+        index_database.insert_one({'file_id':logoId, 'features':features})
+    else:
+       fs.delete(logoId)
+    limit = 3
+    # create an array of matching logo urls to be called in a get api to display logos in frontend.
+    api_result = []
+    results = results[:limit]
+    for result in results:
+      url = 'http://127.0.0.1:8000/api/image/'
+      logo = database.fs.files.find_one({'_id':result[1]})
+      arr =  url+str(logo['_id'])
+      api_result.append(arr)
+    return JsonResponse({'results': api_result}, status=status.HTTP_201_CREATED)
 
 
 class ImageAPIView(APIView):
